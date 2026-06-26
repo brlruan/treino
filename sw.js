@@ -1,7 +1,7 @@
-const CACHE = 'fullbody-v2';
+const CACHE = 'fullbody-v3';
 const FILES = [
-  '/treinovo/treino.html',
-  '/treinovo/manifest.json'
+  '/treino/treino.html',
+  '/treino/manifest.json'
 ];
 
 self.addEventListener('install', e => {
