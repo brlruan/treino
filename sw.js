@@ -1,4 +1,4 @@
-const CACHE = 'fullbody-v3';
+const CACHE = 'fullbody-v4';
 const FILES = [
   '/treino/treino.html',
   '/treino/manifest.json'
@@ -14,7 +14,7 @@ self.addEventListener('install', e => {
 self.addEventListener('activate', e => {
   e.waitUntil(
     caches.keys().then(keys =>
-      Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
+      Promise.all(keys.filter(k => k.startsWith('fullbody-') && k !== CACHE).map(k => caches.delete(k)))
     )
   );
   self.clients.claim();
