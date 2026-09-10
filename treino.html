@@ -166,6 +166,13 @@
 </div>
 
 <div class="panel" id="panel-hist">
+  <div class="comment-area" style="margin:0 0 16px">
+    <div class="ex-name">Transferir histórico entre celulares</div>
+    <p style="font-size:13px;color:var(--text2);margin:8px 0">No celular antigo, exporte e envie o arquivo para o novo. No novo, importe aqui. Os registros existentes serão mantidos; importar o mesmo arquivo novamente não duplica os treinos. Use o mesmo navegador em que você salvou os treinos.</p>
+    <div class="btn-row"><button class="save-btn" onclick="exportHistory()">Exportar histórico</button><button class="clear-btn" style="color:var(--text)" onclick="document.getElementById('backup-file').click()">Importar</button></div>
+    <input id="backup-file" type="file" accept=".json,application/json" hidden onchange="importHistory(this)">
+    <p id="backup-status" role="status" style="font-size:13px;margin-top:10px"></p>
+  </div>
   <div id="hist-list"></div>
 </div>
 
@@ -211,6 +218,25 @@ const BADGE_LABELS = {
   'b-biceps':'Bíceps','b-triceps':'Tríceps','b-ombros':'Ombros',
   'b-lombar':'Lombar','b-isq':'Isquio'
 };
+
+const selected = {};
+const choices = Object.values(WORKOUTS).flatMap(w => w.exercises).filter((ex,i,all) => all.findIndex(e => e.name === ex.name) === i);
+function exercises(wid) { return WORKOUTS[wid].exercises.map((ex,i) => choices.find(e => e.name === selected[wid]?.[i] && e.badge === ex.badge) || ex); }
+function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+async function changeExercise(wid, i, name) {
+  const old = exercises(wid)[i];
+  const entered = Array.from({length:old.sets}, (_,n) => ['kg','reps'].some(k => document.getElementById(`inp-${wid}-${i}-${n+1}-${k}`).value !== '')) .some(Boolean);
+  if (entered && !confirm('Trocar este exercício e limpar os valores dele? Os demais exercícios serão mantidos.')) { document.getElementById(`choice-${wid}-${i}`).value = old.name; return; }
+  await saveDraft(wid);
+  const draft = await dbGet('drafts', wid);
+  selected[wid] ||= {};
+  selected[wid][i] = name;
+  draft.selected = selected[wid];
+  Object.keys(draft.data).filter(k => k.startsWith(i + '-')).forEach(k => delete draft.data[k]);
+  await dbPut('drafts', draft);
+  buildExercises(wid);
+  await loadDraft(wid);
+}
 
 // ─── INDEXEDDB ───────────────────────────────────────────────────────────────
 const DB_NAME = 'fullbody_db';
@@ -267,7 +293,7 @@ function dbDelete(store, key) {
 
 // ─── RASCUNHO ────────────────────────────────────────────────────────────────
 async function saveDraft(wid) {
-  const exs = WORKOUTS[wid].exercises;
+  const exs = exercises(wid);
   const data = {};
   exs.forEach((ex, i) => {
     for (let s = 1; s <= ex.sets; s++) {
@@ -279,7 +305,7 @@ async function saveDraft(wid) {
   });
   data['date']    = document.getElementById('date-' + wid)?.value || '';
   data['comment'] = document.getElementById('comment-' + wid)?.value || '';
-  await dbPut('drafts', { wid, data });
+  await dbPut('drafts', { wid, data, selected: selected[wid] || {} });
   showDraftBadge(wid);
 }
 
@@ -287,8 +313,10 @@ async function loadDraft(wid) {
   try {
     const draft = await dbGet('drafts', wid);
     if (!draft) return;
+    selected[wid] = draft.selected || {};
+    buildExercises(wid);
     const d = draft.data;
-    const exs = WORKOUTS[wid].exercises;
+    const exs = exercises(wid);
 
     if (d['date']) {
       const el = document.getElementById('date-' + wid);
@@ -318,7 +346,7 @@ function showDraftBadge(wid) {
 async function clearDraft(wid) {
   if (!confirm('Limpar todos os valores deste treino?')) return;
   await dbDelete('drafts', wid);
-  const exs = WORKOUTS[wid].exercises;
+  const exs = exercises(wid);
   exs.forEach((ex, i) => {
     for (let s = 1; s <= ex.sets; s++) {
       const kgEl  = document.getElementById(`inp-${wid}-${i}-${s}-kg`);
@@ -337,7 +365,7 @@ async function clearDraft(wid) {
 // ─── UI ──────────────────────────────────────────────────────────────────────
 function buildExercises(wid) {
   const container = document.getElementById('exercises-' + wid);
-  const exs = WORKOUTS[wid].exercises;
+  const exs = exercises(wid);
   let html = '';
   exs.forEach((ex, i) => {
     const setsId = `sets-${wid}-${i}`;
@@ -371,7 +399,7 @@ function buildExercises(wid) {
         <button class="check-btn" onclick="event.stopPropagation();toggleCheck(this)">✓</button>
       </div>`;
     }
-    html += `</div></div>`;
+    html += `</div><div style="padding:10px 14px;border-top:1px solid var(--border)"><label for="choice-${wid}-${i}" style="font-size:12px;color:var(--text2)">Trocar exercício · ${BADGE_LABELS[ex.badge]}</label><select id="choice-${wid}-${i}" class="set-input" style="text-align:left;margin-top:6px" onchange="changeExercise('${wid}',${i},this.value)">${choices.filter(e => e.badge === ex.badge).map(e => `<option value="${escapeHTML(e.name)}" ${e.name === ex.name ? 'selected' : ''}>${escapeHTML(e.name)}</option>`).join('')}</select></div></div>`;
   });
   container.innerHTML = html;
 }
@@ -395,7 +423,7 @@ async function saveWorkout(wid) {
   if (!db) { showToast('Banco ainda carregando', true); return; }
   const date    = document.getElementById('date-' + wid).value || today();
   const comment = document.getElementById('comment-' + wid).value;
-  const exs     = WORKOUTS[wid].exercises;
+  const exs     = exercises(wid);
   const sets    = exs.map((ex, i) => ({
     name: ex.name, badge: ex.badge,
     sets: Array.from({ length: ex.sets }, (_, s) => ({
@@ -427,7 +455,7 @@ async function renderHistory() {
     html += `<div class="hist-entry">
       <div class="hist-header" onclick="toggleHist(${idx})">
         <div>
-          <div class="hist-title">${entry.workout}</div>
+          <div class="hist-title">${escapeHTML(entry.workout)}</div>
           <div class="hist-date">${formatDate(entry.date)}</div>
         </div>
         <div class="hist-chevron" id="hchev-${idx}">▼</div>
@@ -435,14 +463,14 @@ async function renderHistory() {
       <div class="hist-body" id="hbody-${idx}">`;
     entry.sets.forEach(ex => {
       html += `<div class="hist-ex">
-        <div class="hist-ex-name"><span class="ex-badge ${ex.badge}" style="margin-right:6px">${BADGE_LABELS[ex.badge]}</span>${ex.name}</div>`;
+        <div class="hist-ex-name"><span class="ex-badge ${ex.badge}" style="margin-right:6px">${BADGE_LABELS[ex.badge]}</span>${escapeHTML(ex.name)}</div>`;
       ex.sets.forEach((s, si) => {
         if (s.kg || s.reps)
-          html += `<span class="hist-set-pill">Série ${si+1}: ${s.kg||'—'}kg × ${s.reps||'—'}</span>`;
+          html += `<span class="hist-set-pill">Série ${si+1}: ${escapeHTML(s.kg||'—')}kg × ${escapeHTML(s.reps||'—')}</span>`;
       });
       html += `</div>`;
     });
-    if (entry.comment) html += `<div class="hist-comment">${entry.comment}</div>`;
+    if (entry.comment) html += `<div class="hist-comment">${escapeHTML(entry.comment)}</div>`;
     html += `<button class="hist-delete" onclick="deleteEntry(${entry.id})">Excluir registro</button>`;
     html += `</div></div>`;
   });
@@ -462,8 +490,72 @@ async function deleteEntry(id) {
   renderHistory();
 }
 
+
+function validateBackup(payload) {
+  if (!payload || payload.app !== 'fullbody' || payload.version !== 1 || !Array.isArray(payload.history) || payload.history.length > 50000) throw new Error('Arquivo de histórico inválido ou versão não suportada.');
+  const str = (v, max) => typeof v === 'string' && v.length <= max;
+  return payload.history.map(e => {
+    if (!e || !Number.isSafeInteger(e.id) || e.id < 0 || !str(e.date,10) || !/^\d{4}-\d{2}-\d{2}$/.test(e.date) || !['a','b','c'].includes(e.wid) || !str(e.workout,100) || !str(e.comment,20000) || !Array.isArray(e.sets) || e.sets.length > 100) throw new Error('O arquivo contém um treino inválido. Nada foi importado.');
+    const sets = e.sets.map(ex => {
+      if (!ex || !str(ex.name,200) || !Object.hasOwn(BADGE_LABELS,ex.badge) || !Array.isArray(ex.sets) || ex.sets.length > 100) throw new Error('Exercício inválido no arquivo.');
+      return {name:ex.name,badge:ex.badge,sets:ex.sets.map(s => {
+        if (!s || !str(s.kg,30) || !str(s.reps,30)) throw new Error('Série inválida no arquivo.');
+        return {kg:s.kg,reps:s.reps};
+      })};
+    });
+    return {id:e.id,date:e.date,workout:e.workout,wid:e.wid,sets,comment:e.comment};
+  });
+}
+function fingerprint(e) { return JSON.stringify([e.date,e.wid,e.workout,e.comment,e.sets.map(ex => [ex.name,ex.badge,ex.sets.map(s => [s.kg,s.reps])])]); }
+function mergeHistory(incoming) {
+  return new Promise((resolve,reject) => {
+    const tx = db.transaction('treinos','readwrite');
+    const store = tx.objectStore('treinos');
+    let added = 0;
+    store.getAll().onsuccess = event => {
+      const existing = event.target.result;
+      const known = new Set(existing.map(fingerprint));
+      const ids = new Set(existing.map(e => e.id));
+      for (const entry of incoming) {
+        const key = fingerprint(entry);
+        if (known.has(key)) continue;
+        let id = entry.id;
+        while (ids.has(id)) id = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER);
+        store.add({...entry,id});
+        ids.add(id); known.add(key); added++;
+      }
+    };
+    tx.oncomplete = () => resolve(added);
+    tx.onabort = tx.onerror = () => reject(tx.error || new Error('Falha ao salvar histórico.'));
+  });
+}
+async function exportHistory() {
+  const status = document.getElementById('backup-status');
+  try {
+    const history = await dbGetAll('treinos');
+    const blob = new Blob([JSON.stringify({app:'fullbody',version:1,exportedAt:new Date().toISOString(),history},null,2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = `treinos-${today()}.json`;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url),60000);
+    status.textContent = `${history.length} treino(s) exportado(s). Envie o arquivo baixado para o outro celular.`;
+  } catch(e) { status.textContent = 'Não foi possível exportar: ' + e.message; }
+}
+async function importHistory(input) {
+  const status = document.getElementById('backup-status');
+  try {
+    const file = input.files[0]; if (!file) return;
+    if (file.size > 20 * 1024 * 1024) throw new Error('Arquivo maior que 20 MB.');
+    const incoming = validateBackup(JSON.parse(await file.text()));
+    const added = await mergeHistory(incoming);
+    status.textContent = `${added} treino(s) importado(s); ${incoming.length-added} já existente(s).`;
+    await renderHistory();
+  } catch(e) { status.textContent = 'Não foi possível importar: ' + e.message; }
+  finally { input.value = ''; }
+}
+
 // ─── UTILS ───────────────────────────────────────────────────────────────────
-function today() { return new Date().toISOString().split('T')[0]; }
+function today() { const d = new Date(); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`; }
 function formatDate(str) {
   if (!str) return '';
   const [y,m,d] = str.split('-');
@@ -487,6 +579,7 @@ async function init() {
   ['a','b','c'].forEach(async w => {
     await loadDraft(w);
     const el = document.getElementById('date-' + w);
+    el.addEventListener('change', () => saveDraft(w));
     if (el && !el.value) el.value = today();
   });
 }
