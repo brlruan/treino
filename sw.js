@@ -1,4 +1,4 @@
-const CACHE = 'fullbody-v5';
+const CACHE = 'fullbody-v6';
 const FILES = [
   '/treino/treino.html',
   '/treino/manifest.json'
