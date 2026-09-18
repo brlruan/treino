@@ -103,6 +103,7 @@
   .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--green); color: #fff; padding: 10px 20px; border-radius: 20px; font-size: 14px; font-weight: 600; transition: transform 0.3s; z-index: 999; pointer-events: none; }
   .toast.show { transform: translateX(-50%) translateY(0); }
   .toast.error { background: #c05050; }
+.extra-toggle {background:none;border:1px dashed var(--border);color:var(--text2);border-radius:8px;padding:10px 14px;font-size:13px;cursor:pointer;} .comment-area label {display:block;font-size:13px;margin-top:8px;}
 </style>
 </head>
 <body>
@@ -169,7 +170,7 @@
   <div id="hist-list"></div>
 </div>
 
-<div class="toast" id="toast"></div>
+<datalist id="exercise-names"></datalist><div class="toast" id="toast" role="status"></div>
 
 <script>
 const WORKOUTS = {
@@ -211,25 +212,6 @@ const BADGE_LABELS = {
   'b-biceps':'Bíceps','b-triceps':'Tríceps','b-ombros':'Ombros',
   'b-lombar':'Lombar','b-isq':'Isquio'
 };
-
-const selected = {};
-const choices = Object.values(WORKOUTS).flatMap(w => w.exercises).filter((ex,i,all) => all.findIndex(e => e.name === ex.name) === i);
-function exercises(wid) { return WORKOUTS[wid].exercises.map((ex,i) => choices.find(e => e.name === selected[wid]?.[i] && e.badge === ex.badge) || ex); }
-function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
-async function changeExercise(wid, i, name) {
-  const old = exercises(wid)[i];
-  const entered = Array.from({length:old.sets}, (_,n) => ['kg','reps'].some(k => document.getElementById(`inp-${wid}-${i}-${n+1}-${k}`).value !== '')) .some(Boolean);
-  if (entered && !confirm('Trocar este exercício e limpar os valores dele? Os demais exercícios serão mantidos.')) { document.getElementById(`choice-${wid}-${i}`).value = old.name; return; }
-  await saveDraft(wid);
-  const draft = await dbGet('drafts', wid);
-  selected[wid] ||= {};
-  selected[wid][i] = name;
-  draft.selected = selected[wid];
-  Object.keys(draft.data).filter(k => k.startsWith(i + '-')).forEach(k => delete draft.data[k]);
-  await dbPut('drafts', draft);
-  buildExercises(wid);
-  await loadDraft(wid);
-}
 
 // ─── INDEXEDDB ───────────────────────────────────────────────────────────────
 const DB_NAME = 'fullbody_db';
@@ -284,125 +266,10 @@ function dbDelete(store, key) {
   });
 }
 
-// ─── RASCUNHO ────────────────────────────────────────────────────────────────
-async function saveDraft(wid) {
-  const exs = exercises(wid);
-  const data = {};
-  exs.forEach((ex, i) => {
-    for (let s = 1; s <= ex.sets; s++) {
-      const kgEl  = document.getElementById(`inp-${wid}-${i}-${s}-kg`);
-      const rpEl  = document.getElementById(`inp-${wid}-${i}-${s}-reps`);
-      if (kgEl)  data[`${i}-${s}-kg`]   = kgEl.value;
-      if (rpEl)  data[`${i}-${s}-reps`] = rpEl.value;
-    }
-  });
-  data['date']    = document.getElementById('date-' + wid)?.value || '';
-  data['comment'] = document.getElementById('comment-' + wid)?.value || '';
-  await dbPut('drafts', { wid, data, selected: selected[wid] || {} });
-  showDraftBadge(wid);
-}
-
-async function loadDraft(wid) {
-  try {
-    const draft = await dbGet('drafts', wid);
-    if (!draft) return;
-    selected[wid] = draft.selected || {};
-    buildExercises(wid);
-    const d = draft.data;
-    const exs = exercises(wid);
-
-    if (d['date']) {
-      const el = document.getElementById('date-' + wid);
-      if (el) el.value = d['date'];
-    }
-    if (d['comment']) {
-      const el = document.getElementById('comment-' + wid);
-      if (el) el.value = d['comment'];
-    }
-    exs.forEach((ex, i) => {
-      for (let s = 1; s <= ex.sets; s++) {
-        const kgEl  = document.getElementById(`inp-${wid}-${i}-${s}-kg`);
-        const rpEl  = document.getElementById(`inp-${wid}-${i}-${s}-reps`);
-        if (kgEl && d[`${i}-${s}-kg`])   kgEl.value = d[`${i}-${s}-kg`];
-        if (rpEl && d[`${i}-${s}-reps`]) rpEl.value = d[`${i}-${s}-reps`];
-      }
-    });
-    showDraftBadge(wid);
-  } catch(e) {}
-}
-
-function showDraftBadge(wid) {
-  const el = document.getElementById('draft-badge-' + wid);
-  if (el) el.textContent = '✓ Rascunho salvo automaticamente';
-}
-
-async function clearDraft(wid) {
-  if (!confirm('Limpar todos os valores deste treino?')) return;
-  await dbDelete('drafts', wid);
-  const exs = exercises(wid);
-  exs.forEach((ex, i) => {
-    for (let s = 1; s <= ex.sets; s++) {
-      const kgEl  = document.getElementById(`inp-${wid}-${i}-${s}-kg`);
-      const rpEl  = document.getElementById(`inp-${wid}-${i}-${s}-reps`);
-      if (kgEl)  kgEl.value = '';
-      if (rpEl)  rpEl.value = '';
-    }
-  });
-  const comment = document.getElementById('comment-' + wid);
-  if (comment) comment.value = '';
-  const badge = document.getElementById('draft-badge-' + wid);
-  if (badge) badge.textContent = '';
-  showToast('Treino limpo');
-}
-
-// ─── UI ──────────────────────────────────────────────────────────────────────
-function buildExercises(wid) {
-  const container = document.getElementById('exercises-' + wid);
-  const exs = exercises(wid);
-  let html = '';
-  exs.forEach((ex, i) => {
-    const setsId = `sets-${wid}-${i}`;
-    const chevId = `chev-${wid}-${i}`;
-    html += `<div class="ex-card">
-      <div class="ex-header" onclick="toggleEx('${setsId}','${chevId}')">
-        <div class="ex-num">${i+1}</div>
-        <div class="ex-info">
-          <div class="ex-name">${ex.name}</div>
-          <span class="ex-badge ${ex.badge}">${BADGE_LABELS[ex.badge]}</span>
-        </div>
-        <div class="ex-sets-label">${ex.sets}×${ex.reps}</div>
-        <div class="ex-chevron" id="${chevId}">▼</div>
-      </div>
-      <div class="sets-area" id="${setsId}">
-        <div class="set-row">
-          <div class="set-label"></div>
-          <div class="col-header">Peso (kg)</div>
-          <div class="col-header">Reps</div>
-          <div class="col-header"></div>
-        </div>`;
-    for (let s = 1; s <= ex.sets; s++) {
-      html += `<div class="set-row">
-        <div class="set-label">${s}</div>
-        <input type="number" id="inp-${wid}-${i}-${s}-kg" class="set-input" inputmode="decimal"
-          placeholder="—" min="0" step="0.5"
-          oninput="saveDraft('${wid}')">
-        <input type="number" id="inp-${wid}-${i}-${s}-reps" class="set-input" inputmode="numeric"
-          placeholder="${ex.reps}" min="0"
-          oninput="saveDraft('${wid}')">
-        <button class="check-btn" onclick="event.stopPropagation();toggleCheck(this)">✓</button>
-      </div>`;
-    }
-    html += `</div><div style="padding:10px 14px;border-top:1px solid var(--border)"><label for="choice-${wid}-${i}" style="font-size:12px;color:var(--text2)">Trocar exercício · ${BADGE_LABELS[ex.badge]}</label><select id="choice-${wid}-${i}" class="set-input" style="text-align:left;margin-top:6px" onchange="changeExercise('${wid}',${i},this.value)">${choices.filter(e => e.badge === ex.badge).map(e => `<option value="${escapeHTML(e.name)}" ${e.name === ex.name ? 'selected' : ''}>${escapeHTML(e.name)}</option>`).join('')}</select></div></div>`;
-  });
-  container.innerHTML = html;
-}
-
 function toggleEx(setsId, chevId) {
   document.getElementById(setsId).classList.toggle('open');
   document.getElementById(chevId).classList.toggle('open');
 }
-function toggleCheck(btn) { btn.classList.toggle('done'); }
-
 function showTab(id, el) {
   document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.tab, .tab-hist').forEach(t => t.classList.remove('active'));
@@ -412,26 +279,6 @@ function showTab(id, el) {
 }
 
 // ─── HISTÓRICO ───────────────────────────────────────────────────────────────
-async function saveWorkout(wid) {
-  if (!db) { showToast('Banco ainda carregando', true); return; }
-  const date    = document.getElementById('date-' + wid).value || today();
-  const comment = document.getElementById('comment-' + wid).value;
-  const exs     = exercises(wid);
-  const sets    = exs.map((ex, i) => ({
-    name: ex.name, badge: ex.badge,
-    sets: Array.from({ length: ex.sets }, (_, s) => ({
-      kg:   document.getElementById(`inp-${wid}-${i}-${s+1}-kg`)?.value  || '',
-      reps: document.getElementById(`inp-${wid}-${i}-${s+1}-reps`)?.value || ''
-    }))
-  }));
-  try {
-    await dbPut('treinos', { id: Date.now(), date, workout: WORKOUTS[wid].name, wid, sets, comment });
-    showToast('✓ Salvo no histórico!');
-  } catch(e) {
-    showToast('Erro: ' + e.message, true);
-  }
-}
-
 async function renderHistory() {
   const container = document.getElementById('hist-list');
   container.innerHTML = '<div class="hist-empty">Carregando...</div>';
@@ -458,7 +305,7 @@ async function renderHistory() {
       html += `<div class="hist-ex">
         <div class="hist-ex-name"><span class="ex-badge ${ex.badge}" style="margin-right:6px">${BADGE_LABELS[ex.badge]}</span>${escapeHTML(ex.name)}</div>`;
       ex.sets.forEach((s, si) => {
-        if (s.kg || s.reps)
+        if (s.done || s.kg || s.reps)
           html += `<span class="hist-set-pill">Série ${si+1}: ${escapeHTML(s.kg||'—')}kg × ${escapeHTML(s.reps||'—')}</span>`;
       });
       html += `</div>`;
@@ -500,21 +347,150 @@ function showToast(msg, isError) {
 }
 
 // ─── INIT ────────────────────────────────────────────────────────────────────
-async function init() {
-  await openDB();
-  buildExercises('a');
-  buildExercises('b');
-  buildExercises('c');
-  // Define data de hoje só se não houver rascunho com data
-  ['a','b','c'].forEach(async w => {
-    await loadDraft(w);
-    const el = document.getElementById('date-' + w);
-    el.addEventListener('change', () => saveDraft(w));
-    if (el && !el.value) el.value = today();
+const choices = Object.values(WORKOUTS).flatMap(w => w.exercises).filter((ex,i,all) => all.findIndex(e => e.name === ex.name) === i);
+const sessions = {};
+let loads = {};
+let ready = false;
+function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function key(ex) { return JSON.stringify([ex.badge,ex.name.trim().toLocaleLowerCase('pt-BR')]); }
+function freshItem(ex) { return {...ex, values:Array.from({length:ex.sets},(_,i)=>({kg:loads[key(ex)]?.[i]?.kg || '',reps:loads[key(ex)]?.[i]?.reps || '',done:false}))}; }
+function freshSession(wid) { return {wid,version:2,items:WORKOUTS[wid].exercises.map(freshItem),comment:''}; }
+function remember(ex) { loads[key(ex)] = ex.values.map(v=>({kg:v.kg,reps:v.reps})); }
+function capture(wid) {
+  const session = sessions[wid];
+  session.comment = document.getElementById('comment-'+wid).value;
+  session.items.forEach((ex,i)=>ex.values.forEach((v,s)=>{
+    v.kg=document.getElementById(`inp-${wid}-${i}-${s+1}-kg`).value;
+    v.reps=document.getElementById(`inp-${wid}-${i}-${s+1}-reps`).value;
+    v.done=document.getElementById(`check-${wid}-${i}-${s+1}`).classList.contains('done');
+  }));
+}
+function mirrorDraft(wid) {
+  try { localStorage.setItem('fullbody-session-'+wid,JSON.stringify(sessions[wid])); localStorage.setItem('fullbody-loads',JSON.stringify(loads)); } catch(e) {}
+}
+function readMirror(name) { try { return JSON.parse(localStorage.getItem(name)); } catch(e) { return null; } }
+function persist(wid, entry) {
+  if(!entry) mirrorDraft(wid);
+  return new Promise((resolve,reject)=>{
+    const tx=db.transaction(entry ? ['drafts','treinos'] : ['drafts'],'readwrite');
+    tx.objectStore('drafts').put(structuredClone(sessions[wid]));
+    tx.objectStore('drafts').put({wid:'__loads',loads:structuredClone(loads)});
+    if(entry) tx.objectStore('treinos').add(entry);
+    tx.oncomplete=resolve;
+    tx.onabort=tx.onerror=()=>reject(tx.error || new Error('Falha ao salvar'));
   });
+}
+async function saveDraft(wid, changedIndex) {
+  if(!ready) return;
+  capture(wid);
+  if(changedIndex !== undefined) remember(sessions[wid].items[changedIndex]);
+  try { await persist(wid); document.getElementById('draft-badge-'+wid).textContent='✓ Pesos e checks salvos automaticamente'; }
+  catch(e) { document.getElementById('draft-badge-'+wid).textContent='Não foi possível salvar. Tente novamente.'; showToast(e.message,true); }
+}
+async function changeExercise(wid,i,name) {
+  if(!ready) return;
+  capture(wid);
+  const old=sessions[wid].items[i];
+  const next=choices.find(e=>e.name===name && e.badge===old.badge);
+  if(!next) return;
+  if(old.values.some(v=>v.done) && !confirm('Este exercício tem séries feitas. Substituí-lo neste treino? As cargas ficam guardadas.')) { buildExercises(wid); return; }
+  remember(old);
+  sessions[wid].items[i]=freshItem(next);
+  buildExercises(wid);
+  await saveDraft(wid);
+}
+async function clearDraft(wid) {
+  if(!ready || !confirm('Recomeçar o treino original, desmarcando os checks e removendo os extras? As últimas cargas serão mantidas.')) return;
+  sessions[wid]=freshSession(wid);
+  document.getElementById('comment-'+wid).value='';
+  buildExercises(wid);
+  await saveDraft(wid);
+}
+function toggleCheck(wid,i,s) {
+  const btn=document.getElementById(`check-${wid}-${i}-${s}`);
+  btn.classList.toggle('done');btn.setAttribute('aria-pressed',btn.classList.contains('done'));
+  saveDraft(wid,i);
+}
+function extraForm(wid) { document.getElementById('extra-'+wid).hidden = !document.getElementById('extra-'+wid).hidden; }
+async function addExtra(wid) {
+  const name=document.getElementById('extra-name-'+wid).value.trim();
+  const badge=document.getElementById('extra-group-'+wid).value;
+  const sets=Number(document.getElementById('extra-sets-'+wid).value);
+  if(!name || !Number.isInteger(sets) || sets<1 || sets>10) { showToast('Informe o nome e de 1 a 10 séries.',true); return; }
+  capture(wid);
+  sessions[wid].items.push({...freshItem({name,badge,sets,reps:''}),extra:true});
+  buildExercises(wid);
+  await saveDraft(wid);
+}
+async function removeExtra(wid,i) {
+  if(!confirm('Remover este exercício extra do treino atual?')) return;
+  capture(wid);remember(sessions[wid].items[i]);sessions[wid].items.splice(i,1);buildExercises(wid);await saveDraft(wid);
+}
+function buildExercises(wid) {
+  const container=document.getElementById('exercises-'+wid);
+  container.innerHTML=sessions[wid].items.map((ex,i)=>`<div class="ex-card">
+    <div class="ex-header" onclick="toggleEx('sets-${wid}-${i}','chev-${wid}-${i}')"><div class="ex-num">${i+1}</div><div class="ex-info"><div class="ex-name">${escapeHTML(ex.name)}${ex.extra?' · Extra':''}</div><span class="ex-badge ${ex.badge}">${BADGE_LABELS[ex.badge]}</span></div><div class="ex-sets-label">${ex.sets} séries</div><div class="ex-chevron" id="chev-${wid}-${i}">▼</div></div>
+    <div class="sets-area" id="sets-${wid}-${i}"><p style="font-size:12px;color:var(--text2);margin-bottom:10px">Cargas anteriores como referência. Marque ✓ nas séries feitas.</p><div class="set-row"><span></span><span class="col-header">Peso (kg)</span><span class="col-header">Reps</span><span></span></div>
+    ${ex.values.map((v,s)=>`<div class="set-row"><span class="set-label">${s+1}</span><input aria-label="Peso série ${s+1}" type="number" inputmode="decimal" min="0" step="0.5" class="set-input" id="inp-${wid}-${i}-${s+1}-kg" value="${escapeHTML(v.kg)}" oninput="saveDraft('${wid}',${i})"><input aria-label="Repetições série ${s+1}" type="number" inputmode="numeric" min="0" class="set-input" id="inp-${wid}-${i}-${s+1}-reps" placeholder="${escapeHTML(ex.reps)}" value="${escapeHTML(v.reps)}" oninput="saveDraft('${wid}',${i})"><button id="check-${wid}-${i}-${s+1}" class="check-btn ${v.done?'done':''}" aria-label="Série ${s+1} feita" aria-pressed="${!!v.done}" onclick="toggleCheck('${wid}',${i},${s+1})">✓</button></div>`).join('')}</div>
+    <div style="padding:10px 14px;border-top:1px solid var(--border)">${ex.extra?`<button class="clear-btn" onclick="removeExtra('${wid}',${i})">Remover extra</button>`:`<label for="choice-${wid}-${i}" style="font-size:12px;color:var(--text2)">Trocar exercício · ${BADGE_LABELS[ex.badge]}</label><select id="choice-${wid}-${i}" class="set-input" style="text-align:left;margin-top:6px" onchange="changeExercise('${wid}',${i},this.value)">${choices.filter(e=>e.badge===ex.badge).map(e=>`<option ${e.name===ex.name?'selected':''} value="${escapeHTML(e.name)}">${escapeHTML(e.name)}</option>`).join('')}</select>`}</div></div>`).join('')+`
+    <button class="extra-toggle" onclick="extraForm('${wid}')">＋ Adicionar exercício extra</button><div id="extra-${wid}" class="comment-area" hidden><label>Nome do exercício<input id="extra-name-${wid}" class="set-input" maxlength="120" placeholder="Ex.: Desenvolvimento com halteres" list="exercise-names"></label><label>Grupo muscular<select id="extra-group-${wid}" class="set-input">${Object.entries(BADGE_LABELS).map(([b,n])=>`<option value="${b}">${n}</option>`).join('')}</select></label><label>Séries<input id="extra-sets-${wid}" class="set-input" type="number" min="1" max="10" value="2"></label><button class="save-btn" style="margin-top:10px" onclick="addExtra('${wid}')">Adicionar</button></div>`;
+}
+let saving=false;
+async function saveWorkout(wid) {
+  if(!ready || saving) return;
+  capture(wid);
+  const previous=structuredClone(sessions[wid]);
+  if(!previous.items.some(ex=>ex.values.some(v=>v.done))) { showToast('Marque ✓ nas séries feitas antes de salvar.',true);return; }
+  saving=true;
+  const entry={id:Date.now(),date:document.getElementById('date-'+wid).value || today(),wid,workout:WORKOUTS[wid].name,comment:previous.comment,sets:previous.items.map(ex=>({name:ex.name,badge:ex.badge,sets:ex.values.map(v=>v.done?{kg:v.kg,reps:v.reps,done:true}:{kg:'',reps:'',done:false})}))};
+  sessions[wid]=freshSession(wid);
+  try {
+    await persist(wid,entry);
+    mirrorDraft(wid);
+    buildExercises(wid);document.getElementById('comment-'+wid).value='';document.getElementById('date-'+wid).value=today();
+    showToast('✓ Salvo! Plano original pronto para o próximo treino.');
+  } catch(e) {sessions[wid]=previous;showToast('Erro ao salvar: '+e.message,true);}
+  finally {saving=false;}
+}
+async function init() {
+  try {
+    await openDB();
+    const savedLoads=await dbGet('drafts','__loads');
+    loads=readMirror('fullbody-loads') || savedLoads?.loads || {};
+    if(!savedLoads && !readMirror('fullbody-loads')) {
+      const history=(await dbGetAll('treinos')).reverse();
+      history.forEach(entry=>entry.sets.forEach(ex=>{
+        if(ex.sets.some(v=>v.kg || v.reps)) loads[key(ex)]=ex.sets.map(v=>({kg:v.kg || '',reps:v.reps || ''}));
+      }));
+    }
+    for(const wid of ['a','b','c']) {
+      const draft=readMirror('fullbody-session-'+wid) || await dbGet('drafts',wid);
+      if(draft?.version===2) sessions[wid]=draft;
+      else {
+        sessions[wid]=freshSession(wid);
+        if(draft?.data) {
+          sessions[wid].comment=draft.data.comment || '';
+          sessions[wid].items=WORKOUTS[wid].exercises.map((base,i)=>{
+            const ex=freshItem(choices.find(e=>e.name===draft.selected?.[i] && e.badge===base.badge) || base);
+            ex.values.forEach((v,s)=>['kg','reps'].forEach(k=>{if(draft.data[`${i}-${s+1}-${k}`] !== undefined) v[k]=draft.data[`${i}-${s+1}-${k}`];}));
+            if(ex.values.some(v=>v.kg || v.reps)) remember(ex);
+            return ex;
+          });
+        }
+      }
+      buildExercises(wid);document.getElementById('comment-'+wid).value=sessions[wid].comment;document.getElementById('date-'+wid).value=today();
+      await persist(wid);
+    }
+    document.getElementById('exercise-names').innerHTML=choices.map(ex=>`<option value="${escapeHTML(ex.name)}"></option>`).join('');
+    ready=true;
+  } catch(e) {showToast('Não foi possível abrir seus dados: '+e.message,true);}
 }
 
 init();
+let openedDay=today();
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden && openedDay!==today()) { openedDay=today(); ['a','b','c'].forEach(w=>document.getElementById('date-'+w).value=openedDay); }
+});
 
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/treino/sw.js').catch(() => {});
