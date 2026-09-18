@@ -355,7 +355,7 @@ function escapeHTML(value) { return String(value ?? '').replace(/[&<>"']/g, c =>
 function key(ex) { return JSON.stringify([ex.badge,ex.name.trim().toLocaleLowerCase('pt-BR')]); }
 function freshItem(ex) { return {...ex, values:Array.from({length:ex.sets},(_,i)=>({kg:loads[key(ex)]?.[i]?.kg || '',reps:loads[key(ex)]?.[i]?.reps || '',done:false}))}; }
 function freshSession(wid) { return {wid,version:2,items:WORKOUTS[wid].exercises.map(freshItem),comment:''}; }
-function remember(ex) { loads[key(ex)] = ex.values.map(v=>({kg:v.kg,reps:v.reps})); }
+function remember(ex) { const previous=loads[key(ex)] || []; loads[key(ex)] = ex.values.map(v=>({kg:v.kg,reps:v.reps})).concat(previous.slice(ex.values.length)); }
 function capture(wid) {
   const session = sessions[wid];
   session.comment = document.getElementById('comment-'+wid).value;
@@ -426,12 +426,26 @@ async function removeExtra(wid,i) {
   if(!confirm('Remover este exercício extra do treino atual?')) return;
   capture(wid);remember(sessions[wid].items[i]);sessions[wid].items.splice(i,1);buildExercises(wid);await saveDraft(wid);
 }
+async function addSet(wid,i) {
+  if(!ready || saving) return;
+  capture(wid);
+  const openIds=Array.from(document.querySelectorAll('#exercises-'+wid+' .sets-area.open')).map(el=>el.id);
+  const ex=sessions[wid].items[i];
+  const last=loads[key(ex)]?.[ex.values.length];
+  ex.values.push({kg:last?.kg || '',reps:last?.reps || '',done:false});
+  ex.sets=ex.values.length;
+  buildExercises(wid);
+  openIds.forEach(id=>{document.getElementById(id)?.classList.add('open');document.getElementById(id.replace('sets-','chev-'))?.classList.add('open');});
+  document.getElementById(`sets-${wid}-${i}`).classList.add('open');
+  document.getElementById(`chev-${wid}-${i}`).classList.add('open');
+  await saveDraft(wid,i);
+}
 function buildExercises(wid) {
   const container=document.getElementById('exercises-'+wid);
   container.innerHTML=sessions[wid].items.map((ex,i)=>`<div class="ex-card">
     <div class="ex-header" onclick="toggleEx('sets-${wid}-${i}','chev-${wid}-${i}')"><div class="ex-num">${i+1}</div><div class="ex-info"><div class="ex-name">${escapeHTML(ex.name)}${ex.extra?' · Extra':''}</div><span class="ex-badge ${ex.badge}">${BADGE_LABELS[ex.badge]}</span></div><div class="ex-sets-label">${ex.sets} séries</div><div class="ex-chevron" id="chev-${wid}-${i}">▼</div></div>
     <div class="sets-area" id="sets-${wid}-${i}"><p style="font-size:12px;color:var(--text2);margin-bottom:10px">Cargas anteriores como referência. Marque ✓ nas séries feitas.</p><div class="set-row"><span></span><span class="col-header">Peso (kg)</span><span class="col-header">Reps</span><span></span></div>
-    ${ex.values.map((v,s)=>`<div class="set-row"><span class="set-label">${s+1}</span><input aria-label="Peso série ${s+1}" type="number" inputmode="decimal" min="0" step="0.5" class="set-input" id="inp-${wid}-${i}-${s+1}-kg" value="${escapeHTML(v.kg)}" oninput="saveDraft('${wid}',${i})"><input aria-label="Repetições série ${s+1}" type="number" inputmode="numeric" min="0" class="set-input" id="inp-${wid}-${i}-${s+1}-reps" placeholder="${escapeHTML(ex.reps)}" value="${escapeHTML(v.reps)}" oninput="saveDraft('${wid}',${i})"><button id="check-${wid}-${i}-${s+1}" class="check-btn ${v.done?'done':''}" aria-label="Série ${s+1} feita" aria-pressed="${!!v.done}" onclick="toggleCheck('${wid}',${i},${s+1})">✓</button></div>`).join('')}</div>
+    ${ex.values.map((v,s)=>`<div class="set-row"><span class="set-label">${s+1}</span><input aria-label="Peso série ${s+1}" type="number" inputmode="decimal" min="0" step="0.5" class="set-input" id="inp-${wid}-${i}-${s+1}-kg" value="${escapeHTML(v.kg)}" oninput="saveDraft('${wid}',${i})"><input aria-label="Repetições série ${s+1}" type="number" inputmode="numeric" min="0" class="set-input" id="inp-${wid}-${i}-${s+1}-reps" placeholder="${escapeHTML(ex.reps)}" value="${escapeHTML(v.reps)}" oninput="saveDraft('${wid}',${i})"><button id="check-${wid}-${i}-${s+1}" class="check-btn ${v.done?'done':''}" aria-label="Série ${s+1} feita" aria-pressed="${!!v.done}" onclick="toggleCheck('${wid}',${i},${s+1})">✓</button></div>`).join('')}<button class="extra-toggle" style="margin-top:6px" onclick="addSet('${wid}',${i})">＋ Adicionar série</button></div>
     <div style="padding:10px 14px;border-top:1px solid var(--border)">${ex.extra?`<button class="clear-btn" onclick="removeExtra('${wid}',${i})">Remover extra</button>`:`<label for="choice-${wid}-${i}" style="font-size:12px;color:var(--text2)">Trocar exercício · ${BADGE_LABELS[ex.badge]}</label><select id="choice-${wid}-${i}" class="set-input" style="text-align:left;margin-top:6px" onchange="changeExercise('${wid}',${i},this.value)">${choices.filter(e=>e.badge===ex.badge).map(e=>`<option ${e.name===ex.name?'selected':''} value="${escapeHTML(e.name)}">${escapeHTML(e.name)}</option>`).join('')}</select>`}</div></div>`).join('')+`
     <button class="extra-toggle" onclick="extraForm('${wid}')">＋ Adicionar exercício extra</button><div id="extra-${wid}" class="comment-area" hidden><label>Nome do exercício<input id="extra-name-${wid}" class="set-input" maxlength="120" placeholder="Ex.: Desenvolvimento com halteres" list="exercise-names"></label><label>Grupo muscular<select id="extra-group-${wid}" class="set-input">${Object.entries(BADGE_LABELS).map(([b,n])=>`<option value="${b}">${n}</option>`).join('')}</select></label><label>Séries<input id="extra-sets-${wid}" class="set-input" type="number" min="1" max="10" value="2"></label><button class="save-btn" style="margin-top:10px" onclick="addExtra('${wid}')">Adicionar</button></div>`;
 }
