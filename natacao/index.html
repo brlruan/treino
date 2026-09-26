@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b5bd3">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Treino + Natação">
+  <link rel="apple-touch-icon" href="./icon.svg">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <title>Treino + Natação</title>
+  <style>
+    :root{--bg:#f5f7fb;--card:#fff;--text:#172033;--muted:#6b7280;--line:#dfe5ef;--primary:#0b5bd3;--primary2:#0a49aa;--ok:#16794a;--shadow:0 10px 30px rgba(23,32,51,.08);--radius:20px}
+    *{box-sizing:border-box}html{background:var(--bg)}
+    body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Arial,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;padding-bottom:calc(24px + env(safe-area-inset-bottom))}
+    header{position:sticky;top:0;z-index:10;background:rgba(245,247,251,.92);backdrop-filter:blur(14px);padding:calc(14px + env(safe-area-inset-top)) 18px 12px;border-bottom:1px solid rgba(223,229,239,.8)}
+    .header-inner,main{max-width:720px;margin:0 auto}.header-inner h1{font-size:24px;line-height:1.1;margin:0 0 4px}.sub{font-size:14px;color:var(--muted)}
+    main{padding:18px}.tabs{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:5px;background:#e9eef7;border-radius:16px;margin-bottom:16px}
+    .tab{appearance:none;border:0;border-radius:12px;padding:12px;font-weight:700;font-size:15px;background:transparent;color:var(--muted)}
+    .tab.active{background:var(--card);color:var(--primary);box-shadow:0 3px 12px rgba(23,32,51,.08)}
+    .summary{display:flex;justify-content:space-between;gap:10px;align-items:center;background:linear-gradient(135deg,var(--primary),var(--primary2));color:white;border-radius:var(--radius);padding:16px 18px;margin-bottom:14px;box-shadow:var(--shadow)}
+    .summary strong{font-size:17px}.summary small{display:block;opacity:.82;margin-top:4px}.progress{font-size:22px;font-weight:800;white-space:nowrap}
+    .exercise{background:var(--card);border-radius:var(--radius);padding:16px;margin-bottom:12px;box-shadow:var(--shadow);border:1px solid #edf1f7}
+    .exercise-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:12px}.exercise h2{font-size:17px;margin:0 0 4px}.prescription{font-size:13px;color:var(--muted)}
+    .badge{font-size:12px;font-weight:700;color:var(--primary);background:#edf4ff;padding:6px 9px;border-radius:999px;white-space:nowrap}
+    .set-row{display:grid;grid-template-columns:34px 1fr 1fr 44px;gap:8px;align-items:center;margin-top:8px}.set-num{font-weight:700;color:var(--muted);text-align:center}
+    input{width:100%;min-width:0;border:1px solid var(--line);background:#fafbfd;border-radius:12px;padding:11px 10px;font-size:16px;color:var(--text);outline:none}
+    input:focus{border-color:var(--primary);box-shadow:0 0 0 3px rgba(11,91,211,.10)}
+    .check{width:42px;height:42px;border:1px solid var(--line);border-radius:12px;background:#fff;font-size:20px;color:#9aa3b2}.check.done{background:#e7f6ee;color:var(--ok);border-color:#b9e0cb}
+    .labels{display:grid;grid-template-columns:34px 1fr 1fr 44px;gap:8px;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;margin-top:4px}
+    .footer-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:18px}.action{appearance:none;border:0;border-radius:14px;padding:14px;font-size:15px;font-weight:700}.primary{background:var(--primary);color:#fff}.secondary{background:#e9eef7;color:var(--text)}
+    .note{margin-top:14px;padding:14px 16px;border-radius:16px;background:#fff;border:1px solid #edf1f7;color:var(--muted);font-size:13px;line-height:1.45}
+    .toast{position:fixed;left:50%;bottom:calc(18px + env(safe-area-inset-bottom));transform:translateX(-50%) translateY(20px);opacity:0;pointer-events:none;background:#172033;color:#fff;padding:11px 15px;border-radius:999px;font-size:13px;transition:.2s;z-index:30}.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+    @media(max-width:430px){main{padding:14px}.set-row,.labels{grid-template-columns:30px 1fr 1fr 42px}.exercise{padding:14px}}
+  </style>
+</head>
+<body>
+<header><div class="header-inner"><h1>Treino + Natação</h1><div class="sub">2 treinos de musculação · complemento para 3 dias de natação</div></div></header>
+<main>
+  <div class="tabs"><button class="tab active" data-workout="A">Treino A</button><button class="tab" data-workout="B">Treino B</button></div>
+  <section class="summary"><div><strong id="workoutTitle">Treino A</strong><small id="workoutSubtitle">Pernas + empurrar</small></div><div class="progress" id="progress">0/0</div></section>
+  <div id="exerciseList"></div>
+  <div class="footer-actions"><button class="action secondary" id="resetBtn">Limpar treino</button><button class="action primary" id="completeBtn">Concluir treino</button></div>
+  <div class="note">Sugestão semanal: Natação · Musculação A · Natação · descanso · Musculação B · Natação · descanso. Cargas e repetições ficam salvas somente neste aparelho.</div>
+</main>
+<div class="toast" id="toast"></div>
+<script>
+const workouts={
+A:{title:"Treino A",subtitle:"Pernas + empurrar",exercises:[
+{name:"Agachamento ou Leg Press",sets:3,reps:"6–10",tag:"Pernas"},
+{name:"Levantamento terra romeno",sets:3,reps:"8–10",tag:"Posterior"},
+{name:"Supino reto com halteres/máquina",sets:3,reps:"8–12",tag:"Peito"},
+{name:"Afundo / passada",sets:3,reps:"8–12",tag:"Pernas"},
+{name:"Elevação lateral",sets:3,reps:"12–15",tag:"Ombros"},
+{name:"Panturrilha",sets:3,reps:"10–15",tag:"Panturrilha"},
+{name:"Pallof press ou prancha",sets:3,reps:"30–45 s",tag:"Core"}]},
+B:{title:"Treino B",subtitle:"Cadeia posterior + puxar/estabilizar",exercises:[
+{name:"Hip thrust",sets:3,reps:"8–12",tag:"Glúteos"},
+{name:"Cadeira extensora",sets:3,reps:"10–15",tag:"Quadríceps"},
+{name:"Mesa/cadeira flexora",sets:3,reps:"10–15",tag:"Posterior"},
+{name:"Remada sentada ou apoiada",sets:3,reps:"8–12",tag:"Costas"},
+{name:"Face pull",sets:3,reps:"12–20",tag:"Escápulas"},
+{name:"Rosca bíceps",sets:2,reps:"8–12",tag:"Bíceps"},
+{name:"Rotação externa com cabo/elástico",sets:2,reps:"12–20",tag:"Manguito"},
+{name:"Dead bug / abdominal controlado",sets:3,reps:"8–12",tag:"Core"}]}}
+let current=localStorage.getItem("currentWorkout")||"A";const state=JSON.parse(localStorage.getItem("swimGymState")||"{}");
+function keyFor(w,ei,si){return `${w}-${ei}-${si}`}function ensureSet(w,ei,si){const k=keyFor(w,ei,si);if(!state[k])state[k]={weight:"",reps:"",done:false};return state[k]}
+function save(){localStorage.setItem("swimGymState",JSON.stringify(state));localStorage.setItem("currentWorkout",current)}
+function toast(msg){const t=document.getElementById("toast");t.textContent=msg;t.classList.add("show");setTimeout(()=>t.classList.remove("show"),1400)}
+function render(){document.querySelectorAll(".tab").forEach(b=>b.classList.toggle("active",b.dataset.workout===current));const w=workouts[current];document.getElementById("workoutTitle").textContent=w.title;document.getElementById("workoutSubtitle").textContent=w.subtitle;const list=document.getElementById("exerciseList");list.innerHTML="";
+w.exercises.forEach((ex,ei)=>{const card=document.createElement("section");card.className="exercise";card.innerHTML=`<div class="exercise-head"><div><h2>${ex.name}</h2><div class="prescription">${ex.sets} séries · ${ex.reps}</div></div><div class="badge">${ex.tag}</div></div><div class="labels"><span></span><span>Carga</span><span>Reps/tempo</span><span></span></div><div class="rows"></div>`;const rows=card.querySelector(".rows");
+for(let si=0;si<ex.sets;si++){const s=ensureSet(current,ei,si);const row=document.createElement("div");row.className="set-row";row.innerHTML=`<div class="set-num">${si+1}</div><input inputmode="decimal" placeholder="kg" value="${s.weight??""}" aria-label="Carga série ${si+1}"><input inputmode="numeric" placeholder="${ex.reps}" value="${s.reps??""}" aria-label="Repetições série ${si+1}"><button class="check ${s.done?"done":""}" aria-label="Marcar série">${s.done?"✓":"○"}</button>`;const inputs=row.querySelectorAll("input");inputs[0].addEventListener("input",e=>{s.weight=e.target.value;save()});inputs[1].addEventListener("input",e=>{s.reps=e.target.value;save()});row.querySelector(".check").addEventListener("click",()=>{s.done=!s.done;save();render()});rows.appendChild(row)}list.appendChild(card)});updateProgress()}
+function updateProgress(){const w=workouts[current];let total=0,done=0;w.exercises.forEach((ex,ei)=>{for(let si=0;si<ex.sets;si++){total++;if(ensureSet(current,ei,si).done)done++}});document.getElementById("progress").textContent=`${done}/${total}`}
+document.querySelectorAll(".tab").forEach(btn=>btn.addEventListener("click",()=>{current=btn.dataset.workout;save();render();window.scrollTo({top:0,behavior:"smooth"})}));
+document.getElementById("resetBtn").addEventListener("click",()=>{if(!confirm(`Limpar as anotações do Treino ${current}?`))return;const w=workouts[current];w.exercises.forEach((ex,ei)=>{for(let si=0;si<ex.sets;si++)delete state[keyFor(current,ei,si)]});save();render();toast("Treino limpo")});
+document.getElementById("completeBtn").addEventListener("click",()=>{localStorage.setItem(`lastCompleted-${current}`,new Date().toISOString().slice(0,10));toast(`Treino ${current} concluído`)});
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("./sw.js"));render();
+</script></body></html>
